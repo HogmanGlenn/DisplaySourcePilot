@@ -1,0 +1,32 @@
+# Local tools and build output
+/.tools/
+/.dotnet/
+/.nuget/
+/.vs/
+/artifacts/
+**/bin/
+**/obj/
+**/TestResults/
+
+# Local-only prototype retained outside the production repository
+/prototype/
+/.agents/
+
+# IDE and user-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+*.pubxml
+
+# Logs and temporary files
+*.log
+*.binlog
+*.tmp
+
+# Signing material must never be committed
+*.pfx
+*.p12
+*.key
+*.pem

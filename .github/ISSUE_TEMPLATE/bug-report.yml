@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a display discovery, setup, or switching problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: input
+    id: version
+    attributes:
+      label: DisplaySourcePilot version
+      placeholder: 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+
+  - type: input
+    id: monitor
+    attributes:
+      label: Monitor model
+      placeholder: Samsung LS32DG802SUXEN
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Control method
+      options:
+        - DDC/CI
+        - Samsung local network
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the starting input and the input you selected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Remove private addresses or other sensitive information before posting.
+      render: text

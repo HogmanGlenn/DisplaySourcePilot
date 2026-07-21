@@ -1,0 +1,750 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DisplaySourcePilot.App.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:DisplaySourcePilot.Core.Models">
+
+    <Grid>
+        <Grid
+            x:Name="ContentRoot"
+            MaxWidth="760"
+            Padding="28,22,28,24"
+            HorizontalAlignment="Stretch">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="HelpBar" Margin="0,0,0,6" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Samsung monitor HDMI &amp; DisplayPort switcher"
+                    TextTrimming="CharacterEllipsis" />
+                <Button
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    AutomationProperties.Name="Open instructions"
+                    Click="Help_Click"
+                    ToolTipService.ToolTip="Instructions">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <FontIcon FontSize="14" Glyph="&#xE897;" />
+                        <TextBlock Text="Help" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <Grid>
+                    <StackPanel x:Name="SetupPanel" Spacing="16">
+                        <StackPanel Spacing="5">
+                            <TextBlock FontSize="24" FontWeight="SemiBold" Text="Choose a display" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Displays connected by cable or local network appear here."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <TextBlock FontWeight="SemiBold" Text="Available displays" />
+                                <ProgressRing
+                                    x:Name="DiscoveryProgress"
+                                    Width="18"
+                                    Height="18"
+                                    HorizontalAlignment="Right"
+                                    IsActive="False" />
+                            </Grid>
+                            <ListView
+                                x:Name="DeviceListView"
+                                HorizontalAlignment="Stretch"
+                                ContainerContentChanging="DeviceList_ContainerContentChanging"
+                                SelectionChanged="Device_SelectionChanged"
+                                Visibility="Collapsed"
+                                Style="{StaticResource DeviceListStyle}">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:DisplayDevice">
+                                        <Grid MinHeight="62" Padding="10,6" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="36" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border
+                                                Width="36"
+                                                Height="36"
+                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                CornerRadius="4">
+                                                <FontIcon
+                                                    FontSize="18"
+                                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                    Glyph="&#xE7F8;" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock
+                                                    FontWeight="SemiBold"
+                                                    Text="{x:Bind Name}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind Detail}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <Border
+                                x:Name="NoDisplaysPanel"
+                                MinHeight="72"
+                                Padding="14"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Visibility="Collapsed">
+                                <StackPanel HorizontalAlignment="Center" Spacing="4">
+                                    <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="No compatible displays found" />
+                                    <TextBlock
+                                        HorizontalAlignment="Center"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="Check the cable, DDC/CI setting, or local network."
+                                        TextAlignment="Center"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <Expander
+                            x:Name="SamsungAddressExpander"
+                            Collapsed="SamsungAddressExpander_Collapsed"
+                            Expanding="SamsungAddressExpander_Expanding"
+                            HorizontalAlignment="Stretch"
+                            Header="Samsung monitor not listed?">
+                            <Grid Padding="0,8,0,2" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    x:Name="SamsungAddressTextBox"
+                                    AutomationProperties.Name="Samsung monitor IP address"
+                                    PlaceholderText="192.168.1.100" />
+                                <Button
+                                    x:Name="AddSamsungAddressButton"
+                                    Grid.Column="1"
+                                    Click="AddSamsungAddress_Click"
+                                    Content="Check" />
+                            </Grid>
+                        </Expander>
+
+                        <Grid x:Name="InputSelectionPanel" ColumnSpacing="12" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox
+                                x:Name="HdmiComboBox"
+                                HorizontalAlignment="Stretch"
+                                DisplayMemberPath="Label"
+                                Header="HDMI input" />
+                            <ComboBox
+                                x:Name="DisplayPortComboBox"
+                                Grid.Column="1"
+                                HorizontalAlignment="Stretch"
+                                DisplayMemberPath="Label"
+                                Header="DisplayPort input" />
+                        </Grid>
+
+                        <StackPanel x:Name="CurrentInputSelectionPanel" Spacing="8" Visibility="Collapsed">
+                            <TextBlock FontWeight="SemiBold" Text="Input currently showing this window" />
+                            <StackPanel Orientation="Horizontal" Spacing="18">
+                                <RadioButton
+                                    x:Name="SetupCurrentDisplayPortRadio"
+                                    Content="DisplayPort"
+                                    GroupName="SetupCurrentInput"
+                                    IsChecked="True" />
+                                <RadioButton
+                                    x:Name="SetupCurrentHdmiRadio"
+                                    Content="HDMI"
+                                    GroupName="SetupCurrentInput" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                x:Name="UseDisplayButton"
+                                HorizontalAlignment="Stretch"
+                                Click="UseDisplay_Click"
+                                IsEnabled="False"
+                                Style="{StaticResource AccentButtonStyle}">
+                                <TextBlock Text="Use this display" />
+                            </Button>
+                            <Button
+                                x:Name="SetupBackButton"
+                                Grid.Column="1"
+                                Click="SetupBack_Click"
+                                Content="Cancel"
+                                Visibility="Collapsed" />
+                        </Grid>
+                        <Button
+                            x:Name="RetryButton"
+                            HorizontalAlignment="Left"
+                            Click="Retry_Click"
+                            Content="Search again"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="ReadyPanel" Spacing="18" Visibility="Collapsed">
+                        <Grid ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="52" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border
+                                Width="52"
+                                Height="52"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6">
+                                <FontIcon
+                                    FontSize="24"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Glyph="&#xE7F8;" />
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                <TextBlock
+                                    x:Name="ReadyDisplayName"
+                                    FontSize="24"
+                                    FontWeight="SemiBold"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    x:Name="ReadyDisplayDetail"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border
+                            x:Name="InputStatePanel"
+                            Padding="14"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Visibility="Collapsed">
+                            <Grid RowSpacing="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Spacing="3">
+                                    <TextBlock x:Name="InputStateTitle" FontWeight="SemiBold" Text="Confirm the active input" />
+                                    <TextBlock
+                                        x:Name="InputStateMessage"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="No source command will be sent until this is confirmed."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Grid Grid.Row="1" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        x:Name="ConfirmHdmiButton"
+                                        HorizontalAlignment="Stretch"
+                                        Click="ConfirmHdmi_Click"
+                                        Content="HDMI is active" />
+                                    <Button
+                                        x:Name="ConfirmDisplayPortButton"
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Stretch"
+                                        Click="ConfirmDisplayPort_Click"
+                                        Content="DisplayPort is active" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Spacing="10">
+                            <Grid>
+                                <TextBlock FontWeight="SemiBold" Text="Switch input" />
+                                <TextBlock
+                                    HorizontalAlignment="Right"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="Choose a source" />
+                            </Grid>
+                            <Grid
+                                ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    x:Name="HdmiButton"
+                                    Click="Hdmi_Click"
+                                    Style="{StaticResource SourceButtonStyle}">
+                                    <Grid HorizontalAlignment="Stretch">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="35" />
+                                            <RowDefinition Height="44" />
+                                            <RowDefinition Height="18" />
+                                        </Grid.RowDefinitions>
+                                        <Border
+                                            x:Name="HdmiActiveLine"
+                                            Grid.RowSpan="3"
+                                            Width="3"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Stretch"
+                                            Background="#26A87A"
+                                            CornerRadius="2"
+                                            Opacity="0.25" />
+                                        <FontIcon
+                                            Grid.Row="0"
+                                            FontSize="25"
+                                            Foreground="#26A87A"
+                                            Glyph="&#xE7F8;" />
+                                        <TextBlock
+                                            x:Name="HdmiButtonLabel"
+                                            Grid.Row="1"
+                                            VerticalAlignment="Center"
+                                            FontSize="16"
+                                            FontWeight="SemiBold"
+                                            MaxLines="2"
+                                            Text="HDMI"
+                                            TextAlignment="Center"
+                                            TextWrapping="Wrap" />
+                                        <Viewbox Grid.Row="2" Height="18" MaxWidth="120" StretchDirection="DownOnly">
+                                            <TextBlock
+                                                x:Name="HdmiShortcutText"
+                                                FontSize="12"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Ctrl+Alt+H" />
+                                        </Viewbox>
+                                    </Grid>
+                                </Button>
+                                <Button
+                                    x:Name="DisplayPortButton"
+                                    Grid.Column="1"
+                                    Click="DisplayPort_Click"
+                                    Style="{StaticResource SourceButtonStyle}">
+                                    <Grid HorizontalAlignment="Stretch">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="35" />
+                                            <RowDefinition Height="44" />
+                                            <RowDefinition Height="18" />
+                                        </Grid.RowDefinitions>
+                                        <Border
+                                            x:Name="DisplayPortActiveLine"
+                                            Grid.RowSpan="3"
+                                            Width="3"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Stretch"
+                                            Background="#4A8ED8"
+                                            CornerRadius="2"
+                                            Opacity="0.25" />
+                                        <FontIcon
+                                            Grid.Row="0"
+                                            FontSize="25"
+                                            Foreground="#4A8ED8"
+                                            Glyph="&#xE7F8;" />
+                                        <TextBlock
+                                            x:Name="DisplayPortButtonLabel"
+                                            Grid.Row="1"
+                                            VerticalAlignment="Center"
+                                            FontSize="16"
+                                            FontWeight="SemiBold"
+                                            MaxLines="2"
+                                            Text="DisplayPort"
+                                            TextAlignment="Center"
+                                            TextWrapping="Wrap" />
+                                        <Viewbox Grid.Row="2" Height="18" MaxWidth="120" StretchDirection="DownOnly">
+                                            <TextBlock
+                                                x:Name="DisplayPortShortcutText"
+                                                FontSize="12"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Ctrl+Alt+P" />
+                                        </Viewbox>
+                                    </Grid>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                        <Grid RowSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="App behavior" />
+                            <Button
+                                Grid.Column="1"
+                                Margin="0,0,8,0"
+                                AutomationProperties.Name="Keyboard shortcuts"
+                                Click="Hotkeys_Click"
+                                ToolTipService.ToolTip="Keyboard shortcuts">
+                                <FontIcon Glyph="&#xE765;" />
+                            </Button>
+                            <Button
+                                Grid.Column="2"
+                                AutomationProperties.Name="More options"
+                                ToolTipService.ToolTip="More options">
+                                <FontIcon Glyph="&#xE712;" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Click="Hotkeys_Click" Text="Keyboard shortcuts">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE765;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Click="SetupAgain_Click" Text="Set up another display">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE713;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem
+                                            x:Name="RepairSamsungMenuItem"
+                                            Click="RepairSamsung_Click"
+                                            Text="Repair Samsung source route"
+                                            Visibility="Collapsed">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE90F;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem
+                                            x:Name="ConfirmInputMenuItem"
+                                            Click="ConfirmInputState_Click"
+                                            Text="Set current input"
+                                            Visibility="Collapsed">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE73E;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutSubItem Text="Create desktop shortcut">
+                                            <MenuFlyoutSubItem.Icon>
+                                                <FontIcon Glyph="&#xE71B;" />
+                                            </MenuFlyoutSubItem.Icon>
+                                            <MenuFlyoutItem Click="CreateHdmiShortcut_Click" Text="Switch this monitor to HDMI" />
+                                            <MenuFlyoutItem Click="CreateDisplayPortShortcut_Click" Text="Switch this monitor to DisplayPort" />
+                                        </MenuFlyoutSubItem>
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Click="Quit_Click" Text="Quit DisplaySourcePilot">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE8BB;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                            <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="Start with Windows" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Launch at sign-in"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="StartupToggle"
+                                        Grid.Column="1"
+                                        Width="40"
+                                        AutomationProperties.Name="Start with Windows"
+                                        MinWidth="0"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="Startup_Toggled" />
+                                </Grid>
+                                <Grid Grid.Column="1" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="Headless mode" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Keep controls active when closed"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ToggleSwitch
+                                        x:Name="HeadlessToggle"
+                                        Grid.Column="1"
+                                        Width="40"
+                                        AutomationProperties.Name="Headless mode"
+                                        MinWidth="0"
+                                        OffContent=""
+                                        OnContent=""
+                                        Toggled="Headless_Toggled" />
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel x:Name="CalibrationPanel" Spacing="14" Visibility="Collapsed">
+                        <StackPanel Spacing="5">
+                            <TextBlock FontSize="24" FontWeight="SemiBold" Text="Quick source check" />
+                            <TextBlock
+                                x:Name="CalibrationInstructionText"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Choose the input showing this window. Open the source menu, then move to the other input."
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="18">
+                            <RadioButton x:Name="CurrentDisplayPortRadio" Content="DisplayPort" IsChecked="True" />
+                            <RadioButton x:Name="CurrentHdmiRadio" Content="HDMI" />
+                        </StackPanel>
+
+                        <Button
+                            x:Name="OpenSourceMenuButton"
+                            HorizontalAlignment="Stretch"
+                            Click="OpenSourceMenu_Click"
+                            Content="Open source menu"
+                            Style="{StaticResource AccentButtonStyle}" />
+
+                        <InfoBar
+                            x:Name="CalibrationGuidanceBar"
+                            IsClosable="False"
+                            IsOpen="False"
+                            Severity="Warning" />
+
+                        <StackPanel x:Name="CalibrationControls" Spacing="10" Visibility="Collapsed">
+                            <Grid Width="152" RowSpacing="6" ColumnSpacing="6" HorizontalAlignment="Center">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="44" />
+                                    <RowDefinition Height="44" />
+                                    <RowDefinition Height="44" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="48" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    Grid.Row="0"
+                                    Grid.Column="1"
+                                    AutomationProperties.Name="Up"
+                                    Click="CalibrationUp_Click"
+                                    Style="{StaticResource ArrowButtonStyle}"
+                                    ToolTipService.ToolTip="Up">
+                                    <FontIcon Glyph="&#xE70E;" />
+                                </Button>
+                                <Button
+                                    Grid.Row="1"
+                                    Grid.Column="0"
+                                    AutomationProperties.Name="Left"
+                                    Click="CalibrationLeft_Click"
+                                    Style="{StaticResource ArrowButtonStyle}"
+                                    ToolTipService.ToolTip="Left">
+                                    <FontIcon Glyph="&#xE76B;" />
+                                </Button>
+                                <Button
+                                    Grid.Row="1"
+                                    Grid.Column="1"
+                                    AutomationProperties.Name="Undo last move"
+                                    Click="CalibrationUndo_Click"
+                                    Style="{StaticResource ArrowButtonStyle}"
+                                    ToolTipService.ToolTip="Undo last move">
+                                    <FontIcon Glyph="&#xE7A7;" />
+                                </Button>
+                                <Button
+                                    Grid.Row="1"
+                                    Grid.Column="2"
+                                    AutomationProperties.Name="Right"
+                                    Click="CalibrationRight_Click"
+                                    Style="{StaticResource ArrowButtonStyle}"
+                                    ToolTipService.ToolTip="Right">
+                                    <FontIcon Glyph="&#xE76C;" />
+                                </Button>
+                                <Button
+                                    Grid.Row="2"
+                                    Grid.Column="1"
+                                    AutomationProperties.Name="Down"
+                                    Click="CalibrationDown_Click"
+                                    Style="{StaticResource ArrowButtonStyle}"
+                                    ToolTipService.ToolTip="Down">
+                                    <FontIcon Glyph="&#xE70D;" />
+                                </Button>
+                            </Grid>
+                            <TextBlock
+                                x:Name="CalibrationMoveCount"
+                                HorizontalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="No moves yet" />
+                            <CheckBox
+                                x:Name="TargetHighlightedCheckBox"
+                                Checked="TargetHighlighted_Changed"
+                                Content="The target input is highlighted"
+                                Unchecked="TargetHighlighted_Changed" />
+                            <Button
+                                x:Name="FinishCalibrationButton"
+                                HorizontalAlignment="Stretch"
+                                Click="FinishCalibration_Click"
+                                Content="Save verified route"
+                                IsEnabled="False"
+                                Style="{StaticResource AccentButtonStyle}" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    HorizontalAlignment="Stretch"
+                                    Click="MissingSource_Click"
+                                    Content="Target input is not listed" />
+                                <Button
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Stretch"
+                                    Click="RestartCalibration_Click"
+                                    Content="Restart source check" />
+                            </Grid>
+                        </StackPanel>
+
+                        <Button HorizontalAlignment="Left" Click="CancelCalibration_Click" Content="Back" />
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+
+            <InfoBar
+                x:Name="StatusBar"
+                Grid.Row="2"
+                Margin="0,18,0,0"
+                IsClosable="False"
+                IsOpen="True"
+                Message="Starting..."
+                Severity="Informational" />
+        </Grid>
+
+        <ContentDialog
+            x:Name="HotkeyDialog"
+            DefaultButton="Primary"
+            PrimaryButtonClick="HotkeyDialog_Save"
+            PrimaryButtonText="Save"
+            SecondaryButtonText="Cancel"
+            Title="Keyboard shortcuts">
+            <StackPanel MinWidth="320" MaxWidth="380" Spacing="14">
+                <Grid ColumnSpacing="10" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="96" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="64" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="1" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Modifiers" />
+                    <TextBlock Grid.Column="2" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Key" />
+                    <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="HDMI" />
+                    <ComboBox x:Name="HdmiModifierComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" />
+                    <ComboBox x:Name="HdmiKeyComboBox" Grid.Row="1" Grid.Column="2" HorizontalAlignment="Stretch" />
+                    <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="DisplayPort" />
+                    <ComboBox x:Name="DisplayPortModifierComboBox" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch" />
+                    <ComboBox x:Name="DisplayPortKeyComboBox" Grid.Row="2" Grid.Column="2" HorizontalAlignment="Stretch" />
+                </Grid>
+                <InfoBar
+                    x:Name="HotkeyValidationBar"
+                    IsClosable="False"
+                    IsOpen="False"
+                    Severity="Error" />
+            </StackPanel>
+        </ContentDialog>
+
+        <ContentDialog
+            x:Name="HelpDialog"
+            CloseButtonText="Close"
+            DefaultButton="Close"
+            Opened="HelpDialog_Opened"
+            Title="Using DisplaySourcePilot">
+            <ScrollViewer
+                x:Name="HelpScrollViewer"
+                MaxHeight="520"
+                VerticalScrollBarVisibility="Auto">
+                <StackPanel MinWidth="360" MaxWidth="460" Spacing="18">
+                    <StackPanel Spacing="5">
+                        <TextBlock FontWeight="SemiBold" Text="Set up a monitor" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Choose a detected monitor, select its HDMI and DisplayPort inputs, then use that monitor. Enable DDC/CI in the monitor menu when using a cable connection. For a Samsung monitor, approve the pairing request and enter its private IP address if discovery does not find it."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock FontWeight="SemiBold" Text="Switch inputs" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Use the HDMI or DisplayPort button, its global keyboard shortcut, or a desktop shortcut. The colored line beside a source shows the last input DisplaySourcePilot successfully requested."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock FontWeight="SemiBold" Text="Samsung source check" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Choose the input currently showing this window. Open the source menu and use the arrow controls until the exact target input name is highlighted. Confirm the highlight before saving. If the input is missing, wake the connected device or make it output a signal, then restart the check. DisplaySourcePilot will not continue toward another source."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock FontWeight="SemiBold" Text="Recover from a wrong or interrupted switch" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Open the options menu and choose Set current input before switching again. Choose Repair Samsung source route when the source menu layout has changed or a route no longer reaches the correct input."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock FontWeight="SemiBold" Text="Shortcuts and background use" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Use the keyboard button to change global shortcuts. The options menu can create HDMI or DisplayPort desktop shortcuts tied to the configured monitor. Start with Windows launches the app at sign-in. Headless mode keeps shortcuts and commands active after the window closes; use Quit DisplaySourcePilot to stop it."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock FontWeight="SemiBold" Text="Command line" />
+                        <TextBlock
+                            FontFamily="Consolas"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="DisplaySourcePilot.exe --switch hdmi&#x0a;DisplaySourcePilot.exe --switch displayport&#x0a;DisplaySourcePilot.exe --confirm hdmi"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock FontWeight="SemiBold" Text="Troubleshooting and privacy" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Direct cables are more reliable than docks and KVM switches for DDC/CI. Samsung control requires the PC and monitor on the same private network. Logs are stored in %LOCALAPPDATA%\DisplaySourcePilot\app.log. Pairing tokens stay in Windows Credential Manager. The app has no telemetry or cloud service."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </ContentDialog>
+    </Grid>
+</Page>
