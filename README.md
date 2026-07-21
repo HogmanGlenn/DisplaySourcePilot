@@ -2,7 +2,7 @@
 
 DisplaySourcePilot is a Windows monitor input switcher for Samsung and DDC/CI displays. It changes a configured monitor between HDMI and DisplayPort from the app, a global hotkey, a desktop shortcut, or the command line.
 
-![DisplaySourcePilot main window](docs/images/displaysourcepilot.png)
+![DisplaySourcePilot main window](docs/images/display-source-pilot-main-window.png)
 
 ## Requirements
 
