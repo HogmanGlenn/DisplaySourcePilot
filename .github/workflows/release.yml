@@ -48,21 +48,24 @@ jobs:
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          $installer = Get-Item -LiteralPath ".\artifacts\installer\DisplaySourcePilot-Setup-$version.exe"
+          $versionedInstaller = Get-Item -LiteralPath ".\artifacts\installer\DisplaySourcePilot-Setup-$version.exe"
+          $installerPath = Join-Path $versionedInstaller.DirectoryName 'DisplaySourcePilot-Setup.exe'
+          Copy-Item -LiteralPath $versionedInstaller.FullName -Destination $installerPath
+          $installer = Get-Item -LiteralPath $installerPath
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($installer.Name)" | Set-Content .\artifacts\installer\SHA256SUMS.txt
 
-      - name: Create draft release
+      - name: Create release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          $installer = Get-Item -LiteralPath ".\artifacts\installer\DisplaySourcePilot-Setup-$version.exe"
+          $installer = Get-Item -LiteralPath ".\artifacts\installer\DisplaySourcePilot-Setup.exe"
           gh release create $env:GITHUB_REF_NAME `
             $installer.FullName `
             .\artifacts\installer\SHA256SUMS.txt `
-            --draft `
             --generate-notes `
+            --latest `
             --title "DisplaySourcePilot $version" `
             --verify-tag

@@ -18,10 +18,14 @@ For Samsung network control, the PC and monitor must be on the same private netw
 
 ## Install
 
-1. Download the latest `DisplaySourcePilot-Setup-*.exe` from GitHub Releases.
-2. Run the installer and open DisplaySourcePilot.
+[Download the latest Windows installer](https://github.com/HogmanGlenn/DisplaySourcePilot/releases/latest/download/DisplaySourcePilot-Setup.exe)
+
+1. Download `DisplaySourcePilot-Setup.exe`.
+2. Run it and open DisplaySourcePilot.
 3. Choose the monitor and the HDMI and DisplayPort inputs to use.
 4. Approve DisplaySourcePilot on the Samsung monitor if a pairing prompt appears.
+
+The installer includes both x64 and ARM64 builds and automatically installs the correct version for the PC.
 
 If a Samsung monitor is not discovered automatically, expand **Samsung monitor not listed?** and enter its private IPv4 address. Models without a verified source layout use a guided source check. The app requires confirmation of the exact highlighted input before it saves a route.
 
