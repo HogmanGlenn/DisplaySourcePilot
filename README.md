@@ -121,7 +121,3 @@ The application version in [`DisplaySourcePilot.App.csproj`](src/DisplaySourcePi
 - `tests/DisplaySourcePilot.Core.Tests` contains focused behavioral tests without external hardware dependencies.
 - `installer` contains the Inno Setup definition.
 - `build` contains the release build script.
-
-## License
-
-No software license has been published for this repository. The source remains under its author's copyright until a license is explicitly added.
