@@ -58,12 +58,6 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
                 ? SamsungCertificatePins.Read(_credentialStore, display.HardwareId, display.Address!)
                 : null;
 
-            if (!string.IsNullOrWhiteSpace(_token) && string.IsNullOrWhiteSpace(certificatePin) && display.Port == 8002)
-            {
-                _token = null;
-                progress?.Report("Approve DisplaySourcePilot once to secure this monitor connection.");
-            }
-
             if (string.IsNullOrWhiteSpace(_token) && display.Port == 8002)
             {
                 progress?.Report("Approve DisplaySourcePilot on the monitor.");
@@ -79,7 +73,7 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
             }
             catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(_token))
             {
-                _credentialStore.Delete(CredentialTarget(display));
+                DeleteCredentials(display);
                 _token = null;
                 progress?.Report("Approve DisplaySourcePilot on the monitor.");
                 await OpenSocketAsync(display, null, certificatePin, cancellationToken);
@@ -182,7 +176,7 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
             if (!string.IsNullOrWhiteSpace(approvedToken))
             {
                 _token = approvedToken;
-                _credentialStore.Write(CredentialTarget(display), approvedToken);
+                WriteCredential(display, approvedToken);
             }
 
             _socket = socket;
@@ -287,7 +281,8 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         var eventName = root.TryGetProperty("event", out var eventElement)
             ? eventElement.GetString()
             : null;
-        if (!string.Equals(eventName, "ms.channel.connect", StringComparison.Ordinal))
+        if (!string.Equals(eventName, "ms.channel.connect", StringComparison.Ordinal) &&
+            !string.Equals(eventName, "ms.channel.ready", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("The monitor did not approve the remote connection.");
         }
@@ -323,26 +318,59 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         }
     }
 
-    private static string CredentialTarget(ConfiguredDisplay display) =>
-        $"{CredentialPrefix}{display.HardwareId ?? display.Address}";
-
     private string? ReadCredential(ConfiguredDisplay display)
     {
-        var target = CredentialTarget(display);
-        var token = _credentialStore.Read(target);
-        if (!string.IsNullOrWhiteSpace(token))
+        foreach (var target in CredentialTargets(display, CredentialPrefix))
         {
-            return token;
+            var token = _credentialStore.Read(target);
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                WriteCredential(display, token);
+                return token;
+            }
         }
 
-        var legacyTarget = $"{LegacyCredentialPrefix}{display.HardwareId ?? display.Address}";
-        token = _credentialStore.Read(legacyTarget);
-        if (!string.IsNullOrWhiteSpace(token))
+        foreach (var legacyTarget in CredentialTargets(display, LegacyCredentialPrefix))
+        {
+            var token = _credentialStore.Read(legacyTarget);
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                WriteCredential(display, token);
+                return token;
+            }
+        }
+
+        return null;
+    }
+
+    private void WriteCredential(ConfiguredDisplay display, string token)
+    {
+        foreach (var target in CredentialTargets(display, CredentialPrefix))
         {
             _credentialStore.Write(target, token);
         }
+    }
 
-        return token;
+    private void DeleteCredentials(ConfiguredDisplay display)
+    {
+        foreach (var target in CredentialTargets(display, CredentialPrefix))
+        {
+            _credentialStore.Delete(target);
+        }
+    }
+
+    private static IReadOnlyList<string> CredentialTargets(ConfiguredDisplay display, string prefix)
+    {
+        var identities = new[]
+        {
+            display.HardwareId,
+            display.Address
+        };
+        return identities
+            .Where(identity => !string.IsNullOrWhiteSpace(identity))
+            .Select(identity => $"{prefix}{identity}")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static bool SameDisplay(ConfiguredDisplay left, ConfiguredDisplay? right) =>
