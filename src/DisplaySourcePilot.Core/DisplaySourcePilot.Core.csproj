@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="DisplaySourcePilot.Core.Tests" />
+  </ItemGroup>
+
 </Project>

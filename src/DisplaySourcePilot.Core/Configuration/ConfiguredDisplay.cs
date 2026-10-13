@@ -31,6 +31,21 @@ public sealed class ConfiguredDisplay
 
     public InputKind? LastKnownInput { get; set; }
 
+    internal ConfiguredDisplay WithAddress(string address) => new()
+    {
+        Id = Id,
+        Name = Name,
+        Method = Method,
+        Address = address,
+        Port = Port,
+        Model = Model,
+        HardwareId = HardwareId,
+        Hdmi = Hdmi,
+        DisplayPort = DisplayPort,
+        MenuDelayMilliseconds = MenuDelayMilliseconds,
+        LastKnownInput = LastKnownInput
+    };
+
     [JsonIgnore]
     public string ShortcutToken => Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes(Id))).ToLowerInvariant();

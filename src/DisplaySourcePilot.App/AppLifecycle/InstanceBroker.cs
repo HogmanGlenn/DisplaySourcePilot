@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace DisplaySourcePilot.App.AppLifecycle;
 
@@ -29,7 +31,7 @@ internal sealed class InstanceBroker : IAsyncDisposable
         return true;
     }
 
-    public static async Task SendAsync(string command, CancellationToken cancellationToken = default)
+    public static async Task SendAsync(string command, bool allowForegroundActivation = false, CancellationToken cancellationToken = default)
     {
         using var client = new NamedPipeClientStream(
             ".",
@@ -39,6 +41,12 @@ internal sealed class InstanceBroker : IAsyncDisposable
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(3));
         await client.ConnectAsync(timeout.Token);
+        if (allowForegroundActivation && GetNamedPipeServerProcessId(client.SafePipeHandle, out var processId))
+        {
+            var allowed = AllowSetForegroundWindow(processId);
+            AppLog.Write($"Foreground permission transfer accepted: {allowed}.");
+        }
+
         await using var writer = new StreamWriter(client) { AutoFlush = true };
         await writer.WriteLineAsync(command.AsMemory(), timeout.Token);
     }
@@ -108,4 +116,12 @@ internal sealed class InstanceBroker : IAsyncDisposable
             }
         }
     }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
 }

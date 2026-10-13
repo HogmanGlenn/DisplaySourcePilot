@@ -50,7 +50,7 @@ public partial class App : Application
         {
             try
             {
-                await InstanceBroker.SendAsync(command.Serialize());
+                await InstanceBroker.SendAsync(command.Serialize(), allowForegroundActivation: command.Action == "show");
             }
             finally
             {
@@ -117,7 +117,14 @@ public partial class App : Application
 
     private void QueueForwardedCommand(string value)
     {
-        _pendingCommands.Enqueue(AppCommand.Deserialize(value));
+        var command = AppCommand.Deserialize(value);
+        if (command.Action == "show")
+        {
+            _window?.DispatcherQueue.TryEnqueue(() => _window.Show());
+            return;
+        }
+
+        _pendingCommands.Enqueue(command);
         _window?.DispatcherQueue.TryEnqueue(async () => await ProcessPendingCommandsAsync());
     }
 

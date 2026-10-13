@@ -17,6 +17,8 @@ internal sealed class SamsungIdentityReader : IDisposable
     {
         var handler = new HttpClientHandler
         {
+            UseProxy = false,
+            AllowAutoRedirect = false,
             ServerCertificateCustomValidationCallback = (request, certificate, _, _) =>
             {
                 var address = request.RequestUri?.Host;
@@ -94,6 +96,12 @@ internal sealed class SamsungIdentityReader : IDisposable
             var tokenSupport = ReadBoolean(device, "TokenAuthSupport", "tokenAuthSupport");
             if (_observedPins.TryGetValue(address.ToString(), out var fingerprint))
             {
+                var expected = SamsungCertificatePins.Read(_credentialStore, id, address.ToString());
+                if (!string.IsNullOrWhiteSpace(expected) && !SamsungCertificatePins.Matches(expected, fingerprint))
+                {
+                    return null;
+                }
+
                 SamsungCertificatePins.Write(_credentialStore, fingerprint, id, address.ToString());
             }
 

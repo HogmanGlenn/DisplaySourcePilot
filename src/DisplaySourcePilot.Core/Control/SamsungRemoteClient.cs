@@ -18,6 +18,7 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly List<TimeSpan> _connectionTimes = [];
     private ClientWebSocket? _socket;
+    private HttpMessageInvoker? _socketHttpClient;
     private CancellationTokenSource? _receiveCancellation;
     private Task? _receiveTask;
     private ConfiguredDisplay? _display;
@@ -53,32 +54,7 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
             }
 
             _display = display;
-            _token = ReadCredential(display);
-            var certificatePin = display.Port == 8002
-                ? SamsungCertificatePins.Read(_credentialStore, display.HardwareId, display.Address!)
-                : null;
-
-            if (string.IsNullOrWhiteSpace(_token) && display.Port == 8002)
-            {
-                progress?.Report("Approve DisplaySourcePilot on the monitor.");
-            }
-            else
-            {
-                progress?.Report("Connecting to the monitor...");
-            }
-
-            try
-            {
-                await OpenSocketAsync(display, _token, certificatePin, cancellationToken);
-            }
-            catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(_token))
-            {
-                DeleteCredentials(display);
-                _token = null;
-                progress?.Report("Approve DisplaySourcePilot on the monitor.");
-                await OpenSocketAsync(display, null, certificatePin, cancellationToken);
-            }
-
+            await OpenAuthorizedSocketAsync(display, progress, cancellationToken);
             progress?.Report("Monitor connected.");
         }
         finally
@@ -100,10 +76,7 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
             if (!IsConnected)
             {
                 await CloseSocketAsync();
-                var certificatePin = _display.Port == 8002
-                    ? SamsungCertificatePins.Read(_credentialStore, _display.HardwareId, _display.Address!)
-                    : null;
-                await OpenSocketAsync(_display, _token, certificatePin, cancellationToken);
+                await OpenAuthorizedSocketAsync(_display, null, cancellationToken);
             }
 
             await SendKeyCoreAsync(key, cancellationToken);
@@ -128,6 +101,32 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         }
     }
 
+    internal async Task OpenAuthorizedSocketAsync(
+        ConfiguredDisplay display,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken,
+        Func<string?, CancellationToken, Task>? openSocket = null)
+    {
+        _token = display.Port == 8002 ? ReadCredential(display) : null;
+        var certificatePin = display.Port == 8002
+            ? SamsungCertificatePins.Read(_credentialStore, display.HardwareId, display.Address!)
+            : null;
+        openSocket ??= (token, cancellation) => OpenSocketAsync(display, token, certificatePin, cancellation);
+        progress?.Report(string.IsNullOrWhiteSpace(_token) && display.Port == 8002
+            ? "Approve DisplaySourcePilot on the monitor."
+            : "Connecting to the monitor...");
+        try
+        {
+            await openSocket(_token, cancellationToken);
+        }
+        catch (SamsungAuthorizationException) when (!string.IsNullOrWhiteSpace(_token))
+        {
+            _token = null;
+            progress?.Report("Approve DisplaySourcePilot on the monitor.");
+            await openSocket(null, cancellationToken);
+        }
+    }
+
     private async Task OpenSocketAsync(
         ConfiguredDisplay display,
         string? token,
@@ -136,8 +135,16 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
     {
         var socket = new ClientWebSocket();
         socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        socket.Options.Proxy = null;
+        var handler = new SocketsHttpHandler
+        {
+            UseProxy = false,
+            AllowAutoRedirect = false,
+            UseCookies = false
+        };
+        var httpClient = new HttpMessageInvoker(handler);
         string? presentedFingerprint = null;
-        socket.Options.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
         {
             if (certificate is null)
             {
@@ -155,9 +162,8 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            await socket.ConnectAsync(uri, timeout.Token);
-            var hello = await ReceiveMessageAsync(socket, timeout.Token);
-            var approvedToken = ParseConnectMessage(hello);
+            await socket.ConnectAsync(uri, httpClient, timeout.Token);
+            var approvedToken = await ReceiveConnectMessageAsync(socket, timeout.Token);
             stopwatch.Stop();
             if (display.Port == 8002 && presentedFingerprint is not null)
             {
@@ -173,27 +179,35 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
                 _connectionTimes.Add(stopwatch.Elapsed);
             }
 
-            if (!string.IsNullOrWhiteSpace(approvedToken))
+            if (display.Port == 8002 && !string.IsNullOrWhiteSpace(approvedToken))
             {
                 _token = approvedToken;
                 WriteCredential(display, approvedToken);
             }
+            else if (display.Port == 8002 && string.IsNullOrWhiteSpace(token))
+            {
+                throw new InvalidOperationException(
+                    "The monitor approved the connection but did not return a reusable pairing token.");
+            }
 
             _socket = socket;
+            _socketHttpClient = httpClient;
             _receiveCancellation = new CancellationTokenSource();
             _receiveTask = DrainMessagesAsync(socket, _receiveCancellation.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             socket.Dispose();
+            httpClient.Dispose();
             throw new TimeoutException(
                 string.IsNullOrWhiteSpace(token)
                     ? "Pairing timed out. Try again and approve the request on the monitor."
-                    : "The monitor did not respond. Check that it is on and connected to the same network.");
+                    : "The monitor did not finish connecting. Check that it is on and approve DisplaySourcePilot if a request is shown.");
         }
         catch
         {
             socket.Dispose();
+            httpClient.Dispose();
             throw;
         }
     }
@@ -238,9 +252,11 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         _receiveTask = null;
         _socket?.Dispose();
         _socket = null;
+        _socketHttpClient?.Dispose();
+        _socketHttpClient = null;
     }
 
-    private static async Task<string> ReceiveMessageAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    private static async Task<string> ReceiveMessageAsync(WebSocket socket, CancellationToken cancellationToken)
     {
         var buffer = new byte[8192];
         using var stream = new MemoryStream();
@@ -260,6 +276,20 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         return Encoding.UTF8.GetString(stream.GetBuffer(), 0, checked((int)stream.Length));
     }
 
+    internal static async Task<string?> ReceiveConnectMessageAsync(
+        WebSocket socket,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var message = await ReceiveMessageAsync(socket, cancellationToken);
+            if (TryParseConnectMessage(message, out var token))
+            {
+                return token;
+            }
+        }
+    }
+
     private static async Task DrainMessagesAsync(ClientWebSocket socket, CancellationToken cancellationToken)
     {
         try
@@ -274,31 +304,96 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         }
     }
 
-    private static string? ParseConnectMessage(string json)
+    internal static bool TryParseConnectMessage(string json, out string? token)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var eventName = root.TryGetProperty("event", out var eventElement)
             ? eventElement.GetString()
             : null;
-        if (!string.Equals(eventName, "ms.channel.connect", StringComparison.Ordinal) &&
-            !string.Equals(eventName, "ms.channel.ready", StringComparison.Ordinal))
+        if (string.Equals(eventName, "ms.channel.unauthorized", StringComparison.Ordinal))
         {
-            throw new InvalidOperationException("The monitor did not approve the remote connection.");
+            throw new SamsungAuthorizationException();
         }
 
-        return root.TryGetProperty("data", out var data) &&
-               data.TryGetProperty("token", out var token) &&
-               token.ValueKind == JsonValueKind.String
-            ? token.GetString()
+        if (string.Equals(eventName, "ms.channel.timeOut", StringComparison.Ordinal))
+        {
+            throw new TimeoutException("The monitor timed out while approving the remote connection. Try again and approve the request on the monitor.");
+        }
+
+        if (string.Equals(eventName, "ms.error", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The monitor reported an error while connecting. Try again.");
+        }
+
+        if (!string.Equals(eventName, "ms.channel.connect", StringComparison.Ordinal))
+        {
+            token = null;
+            return false;
+        }
+
+        token = root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+            ? ReadToken(data)
             : null;
+        return true;
     }
 
-    private static Uri BuildRemoteUri(ConfiguredDisplay display, string? token)
+    private static string? ReadToken(JsonElement data)
+    {
+        if (data.TryGetProperty("token", out var token) && !string.IsNullOrWhiteSpace(TokenValue(token)))
+        {
+            return TokenValue(token);
+        }
+
+        if (!data.TryGetProperty("clients", out var clients) || clients.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var connectionId = data.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
+            ? id.GetString()
+            : null;
+        string? onlyClientToken = null;
+        var tokenCount = 0;
+        foreach (var client in clients.EnumerateArray())
+        {
+            if (client.ValueKind != JsonValueKind.Object ||
+                !client.TryGetProperty("attributes", out var attributes) ||
+                attributes.ValueKind != JsonValueKind.Object ||
+                !attributes.TryGetProperty("token", out var clientToken) ||
+                string.IsNullOrWhiteSpace(TokenValue(clientToken)))
+            {
+                continue;
+            }
+
+            var value = TokenValue(clientToken);
+            if (!string.IsNullOrWhiteSpace(connectionId) &&
+                client.TryGetProperty("id", out var clientId) &&
+                clientId.ValueKind == JsonValueKind.String &&
+                string.Equals(clientId.GetString(), connectionId, StringComparison.Ordinal))
+            {
+                return value;
+            }
+
+            onlyClientToken = value;
+            tokenCount++;
+        }
+
+        return string.IsNullOrWhiteSpace(connectionId) && tokenCount == 1 ? onlyClientToken : null;
+    }
+
+    private static string? TokenValue(JsonElement token) => token.ValueKind switch
+    {
+        JsonValueKind.String => token.GetString(),
+        JsonValueKind.Number => token.GetRawText(),
+        _ => null
+    };
+
+    internal static Uri BuildRemoteUri(ConfiguredDisplay display, string? token)
     {
         var scheme = display.Port == 8002 ? "wss" : "ws";
         var name = WebUtility.UrlEncode(Convert.ToBase64String(Encoding.UTF8.GetBytes(RemoteName)));
-        var tokenParameter = string.IsNullOrWhiteSpace(token)
+        var tokenParameter = display.Port != 8002 || string.IsNullOrWhiteSpace(token)
             ? string.Empty
             : $"&token={WebUtility.UrlEncode(token)}";
         return new Uri(
@@ -351,14 +446,6 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         }
     }
 
-    private void DeleteCredentials(ConfiguredDisplay display)
-    {
-        foreach (var target in CredentialTargets(display, CredentialPrefix))
-        {
-            _credentialStore.Delete(target);
-        }
-    }
-
     private static IReadOnlyList<string> CredentialTargets(ConfiguredDisplay display, string prefix)
     {
         var identities = new[]
@@ -378,4 +465,12 @@ public sealed class SamsungRemoteClient : ISamsungRemoteControl, IAsyncDisposabl
         left.Port == right.Port &&
         string.Equals(left.Id, right.Id, StringComparison.Ordinal) &&
         string.Equals(left.Address, right.Address, StringComparison.OrdinalIgnoreCase);
+}
+
+internal sealed class SamsungAuthorizationException : InvalidOperationException
+{
+    public SamsungAuthorizationException()
+        : base("The monitor rejected the saved remote authorization.")
+    {
+    }
 }

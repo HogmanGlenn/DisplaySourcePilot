@@ -207,7 +207,7 @@ public sealed partial class MainPage : Page
             var result = configuredDisplay.Method == ControlMethod.SamsungTizen
                 ? $"{sourceLabel} switch sent."
                 : $"{sourceLabel} selected.";
-            AppLog.Write($"{result} Completed in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+            AppLog.Write($"{input} command completed in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
             SetStatus(result, severity: InfoBarSeverity.Success);
         }
         catch (CurrentInputUnknownException exception)

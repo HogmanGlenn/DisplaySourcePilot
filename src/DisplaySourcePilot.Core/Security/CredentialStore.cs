@@ -26,7 +26,7 @@ public sealed class CredentialStore
                 CredentialBlobSize = (uint)bytes.Length,
                 CredentialBlob = blob,
                 Persist = CredentialPersistLocalMachine,
-                UserName = Environment.UserName
+                UserName = "DisplaySourcePilot"
             };
 
             if (!CredWrite(ref credential, 0))
@@ -36,8 +36,9 @@ public sealed class CredentialStore
         }
         finally
         {
-            Marshal.FreeCoTaskMem(blob);
             CryptographicOperations.ZeroMemory(bytes);
+            Marshal.Copy(bytes, 0, blob, bytes.Length);
+            Marshal.FreeCoTaskMem(blob);
         }
     }
 

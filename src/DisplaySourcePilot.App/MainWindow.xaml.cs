@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using DisplaySourcePilot.App.AppLifecycle;
+using DisplaySourcePilot.Core.Configuration;
 using DisplaySourcePilot.Core.Control;
 using DisplaySourcePilot.Core.Discovery;
 using Microsoft.UI.Windowing;
@@ -21,6 +23,12 @@ public sealed partial class MainWindow : Window
     private bool _initializingSize = true;
     private bool _userResized;
     private SizeInt32? _pendingAutomaticSize;
+    private readonly WindowPlacementStore _placementStore = new();
+    private WindowPlacement? _normalPlacement;
+    private bool _preservePosition;
+    private bool _restoreMaximized;
+    private bool _wasMaximized;
+    private OverlappedPresenterState _lastPresenterState = OverlappedPresenterState.Restored;
 
     public MainWindow(DisplaySourcePilotService switchService, DisplayDiscoveryService discoveryService)
     {
@@ -54,6 +62,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Move(new PointInt32(
             workArea.X + ((workArea.Width - initialWidth) / 2),
             workArea.Y + ((workArea.Height - initialHeight) / 2)));
+        RestoreWindowPlacement();
 
         AppWindow.Changed += OnAppWindowChanged;
         AppWindow.Closing += OnClosing;
@@ -61,12 +70,30 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        var presenterState = (sender.Presenter as OverlappedPresenter)?.State;
+        var stateChanged = presenterState != _lastPresenterState;
+        if (presenterState is { } state)
+        {
+            _lastPresenterState = state;
+        }
+
+        CaptureNormalPlacement();
         if (args.DidPositionChange)
         {
+            if (!_initializingSize && _pendingAutomaticSize is null)
+            {
+                _preservePosition = true;
+            }
+
             UpdateMinimumSize();
         }
 
-        if (!args.DidSizeChange)
+        if (!args.DidSizeChange || sender.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Restored })
+        {
+            return;
+        }
+
+        if (stateChanged)
         {
             return;
         }
@@ -94,7 +121,7 @@ public sealed partial class MainWindow : Window
 
     private void ResizeForContent(int requestedWidth, int requestedContentHeight)
     {
-        if (AppWindow.Presenter is not OverlappedPresenter || _userResized)
+        if (AppWindow.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Restored } || _userResized)
         {
             return;
         }
@@ -116,8 +143,8 @@ public sealed partial class MainWindow : Window
         var height = Math.Clamp((int)Math.Round(requestedHeight * scale), minimumHeight, maximumHeight);
         var currentSize = AppWindow.Size;
         var currentPosition = AppWindow.Position;
-        var x = currentPosition.X + ((currentSize.Width - width) / 2);
-        var y = currentPosition.Y + ((currentSize.Height - height) / 2);
+        var x = _preservePosition ? currentPosition.X : currentPosition.X + ((currentSize.Width - width) / 2);
+        var y = _preservePosition ? currentPosition.Y : currentPosition.Y + ((currentSize.Height - height) / 2);
         x = Math.Clamp(x, workArea.X, Math.Max(workArea.X, workArea.X + workArea.Width - width));
         y = Math.Clamp(y, workArea.Y, Math.Max(workArea.Y, workArea.Y + workArea.Height - height));
 
@@ -161,19 +188,37 @@ public sealed partial class MainWindow : Window
 
     public void Show()
     {
+        AppWindow.Show(activateWindow: true);
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            if (_restoreMaximized || presenter.State == OverlappedPresenterState.Minimized && _wasMaximized)
+            {
+                presenter.Maximize();
+            }
+            else if (presenter.State == OverlappedPresenterState.Minimized)
+            {
+                presenter.Restore();
+            }
+
+            _restoreMaximized = false;
+        }
+
         Activate();
-        AppWindow.Show();
+        var activated = SetForegroundWindow(WindowNative.GetWindowHandle(this));
+        AppLog.Write($"Window shown. Foreground activation accepted: {activated}.");
         ContentPage.RequestCurrentSize();
     }
 
     public void CloseForQuit()
     {
+        SaveWindowPlacement();
         _allowClose = true;
         Close();
     }
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        SaveWindowPlacement();
         if (_allowClose)
         {
             return;
@@ -190,7 +235,83 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void RestoreWindowPlacement()
+    {
+        try
+        {
+            if (_placementStore.Load() is not { } saved)
+            {
+                return;
+            }
+
+            var displayArea = DisplayArea.GetFromRect(
+                new RectInt32(saved.X, saved.Y, saved.Width, saved.Height), DisplayAreaFallback.Nearest);
+            var workArea = displayArea.WorkArea;
+            AppWindow.Move(new PointInt32(workArea.X, workArea.Y));
+            var dpi = GetDpiForWindow(WindowNative.GetWindowHandle(this));
+            var placement = saved.Restore(workArea.X, workArea.Y, workArea.Width, workArea.Height, dpi,
+                (int)Math.Ceiling(MinimumWidth * dpi / 96d), (int)Math.Ceiling(MinimumHeight * dpi / 96d));
+            AppWindow.MoveAndResize(new RectInt32(placement.X, placement.Y, placement.Width, placement.Height));
+            _normalPlacement = placement;
+            _userResized = saved.UserResized;
+            _preservePosition = true;
+            _restoreMaximized = saved.Maximized;
+            _wasMaximized = saved.Maximized;
+            UpdateMinimumSize();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write(exception);
+        }
+    }
+
+    private void CaptureNormalPlacement()
+    {
+        if (!AppWindow.IsVisible || AppWindow.Presenter is not OverlappedPresenter presenter)
+        {
+            return;
+        }
+
+        if (presenter.State == OverlappedPresenterState.Restored)
+        {
+            var position = AppWindow.Position;
+            var size = AppWindow.Size;
+            _normalPlacement = new WindowPlacement(position.X, position.Y, size.Width, size.Height,
+                GetDpiForWindow(WindowNative.GetWindowHandle(this)));
+            _wasMaximized = false;
+        }
+        else if (presenter.State == OverlappedPresenterState.Maximized)
+        {
+            _wasMaximized = true;
+        }
+    }
+
+    private void SaveWindowPlacement()
+    {
+        if (!AppWindow.IsVisible)
+        {
+            return;
+        }
+
+        CaptureNormalPlacement();
+        if (_normalPlacement is { IsValid: true } placement)
+        {
+            try
+            {
+                _placementStore.Save(placement with { Maximized = _wasMaximized, UserResized = _userResized });
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Write(exception);
+            }
+        }
+    }
+
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
 
 }

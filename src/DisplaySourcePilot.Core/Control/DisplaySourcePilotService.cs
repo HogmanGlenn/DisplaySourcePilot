@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using DisplaySourcePilot.Core.Configuration;
+using DisplaySourcePilot.Core.Discovery;
 using DisplaySourcePilot.Core.Models;
 
 namespace DisplaySourcePilot.Core.Control;
@@ -8,14 +9,20 @@ public sealed class DisplaySourcePilotService : IAsyncDisposable
 {
     private readonly SettingsStore _settingsStore;
     private readonly DdcController _ddcController = new();
-    private readonly SamsungRemoteClient _samsungRemote = new();
+    private readonly ISamsungRemoteControl _samsungRemote;
+    private readonly ISamsungNetworkDiscovery _samsungDiscovery;
     private readonly SamsungController _samsungController;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private AppSettings _settings = new();
 
-    public DisplaySourcePilotService(SettingsStore? settingsStore = null)
+    public DisplaySourcePilotService(
+        SettingsStore? settingsStore = null,
+        ISamsungRemoteControl? samsungRemote = null,
+        ISamsungNetworkDiscovery? samsungDiscovery = null)
     {
         _settingsStore = settingsStore ?? new SettingsStore();
+        _samsungRemote = samsungRemote ?? new SamsungRemoteClient();
+        _samsungDiscovery = samsungDiscovery ?? new SamsungNetworkDiscovery();
         _samsungController = new SamsungController(_samsungRemote);
     }
 
@@ -32,7 +39,7 @@ public sealed class DisplaySourcePilotService : IAsyncDisposable
         {
             try
             {
-                await _samsungRemote.ConnectAsync(_settings.Display, progress, cancellationToken);
+                await ConnectSamsungAsync(_settings.Display, progress, cancellationToken);
             }
             catch (Exception exception) when (
                 exception is HttpRequestException or WebSocketException or TimeoutException or InvalidOperationException)
@@ -70,7 +77,7 @@ public sealed class DisplaySourcePilotService : IAsyncDisposable
 
             if (configured.Method == ControlMethod.SamsungTizen)
             {
-                await _samsungRemote.ConnectAsync(configured, progress, cancellationToken);
+                configured = await ConnectSamsungAsync(configured, progress, cancellationToken);
                 var profile = SamsungSourceProfiles.Find(configured.Model ?? string.Empty);
                 if (_samsungRemote.ConnectionTimes.Count > 0)
                 {
@@ -141,7 +148,7 @@ public sealed class DisplaySourcePilotService : IAsyncDisposable
 
             try
             {
-                await _samsungRemote.ConnectAsync(display, cancellationToken: cancellationToken);
+                display = await ConnectSamsungAsync(display, cancellationToken: cancellationToken);
             }
             catch
             {
@@ -251,7 +258,7 @@ public sealed class DisplaySourcePilotService : IAsyncDisposable
         }
 
         var temporaryDisplay = CreateConfiguredDisplay(device, device.Inputs[0], device.Inputs[1]);
-        await _samsungRemote.ConnectAsync(temporaryDisplay, progress, cancellationToken);
+        await ConnectSamsungAsync(temporaryDisplay, progress, cancellationToken);
     }
 
     public Task SendSamsungKeyAsync(string key, CancellationToken cancellationToken = default) =>
@@ -296,6 +303,59 @@ public sealed class DisplaySourcePilotService : IAsyncDisposable
         {
             _operationGate.Release();
             _operationGate.Dispose();
+        }
+    }
+
+    private async Task<ConfiguredDisplay> ConnectSamsungAsync(
+        ConfiguredDisplay display,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _samsungRemote.ConnectAsync(display, progress, cancellationToken);
+            return display;
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException or WebSocketException or TimeoutException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report("Looking for the monitor on the local network...");
+            var identities = await _samsungDiscovery.DiscoverAsync(
+                preferredAddresses: new[] { display.Address! },
+                cancellationToken: cancellationToken);
+            var hardwareId = !string.IsNullOrWhiteSpace(display.HardwareId)
+                ? display.HardwareId
+                : display.Id.StartsWith("samsung:", StringComparison.Ordinal) ? display.Id["samsung:".Length..] : null;
+            var identity = identities.FirstOrDefault(candidate =>
+                !string.IsNullOrWhiteSpace(hardwareId) &&
+                string.Equals(candidate.Id, hardwareId, StringComparison.OrdinalIgnoreCase));
+            if (identity is null)
+            {
+                throw new InvalidOperationException(
+                    "The configured Samsung monitor could not be reached. Check that it is on and connected to the same network.",
+                    exception);
+            }
+
+            var recovered = string.Equals(identity.Address, display.Address, StringComparison.OrdinalIgnoreCase)
+                ? display
+                : display.WithAddress(identity.Address);
+            await _samsungRemote.ConnectAsync(recovered, progress, cancellationToken);
+            if (!ReferenceEquals(recovered, display) && ReferenceEquals(_settings.Display, display))
+            {
+                _settings.Display = recovered;
+                try
+                {
+                    await _settingsStore.SaveAsync(_settings, cancellationToken);
+                }
+                catch
+                {
+                    _settings.Display = display;
+                    throw;
+                }
+            }
+
+            return recovered;
         }
     }
 

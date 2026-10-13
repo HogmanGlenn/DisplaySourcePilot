@@ -6,7 +6,7 @@ using DisplaySourcePilot.Core.Models;
 
 namespace DisplaySourcePilot.Core.Discovery;
 
-public sealed class SamsungNetworkDiscovery
+public sealed class SamsungNetworkDiscovery : ISamsungNetworkDiscovery
 {
     private const int ScanConcurrency = 64;
 

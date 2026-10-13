@@ -45,6 +45,9 @@ foreach ($target in @(
         --no-restore `
         -p:Platform=$($target.Platform)
     if ($LASTEXITCODE -ne 0) { throw "Publishing $($target.Runtime) failed." }
+
+    & $dotnet run --project $tests --configuration Release --no-build --no-restore -- --audit-release $output
+    if ($LASTEXITCODE -ne 0) { throw "Release verification failed for $($target.Runtime)." }
 }
 
 if (-not $SkipInstaller) {

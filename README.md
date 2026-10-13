@@ -27,6 +27,8 @@ For Samsung network control, the PC and monitor must be on the same private netw
 
 The installer includes both x64 and ARM64 builds and automatically installs the correct version for the PC.
 
+The installer is self-contained: users do not need to install .NET or the Windows App SDK separately. Each Windows user configures their own monitor; no developer's settings, addresses, or credentials are included.
+
 If a Samsung monitor is not discovered automatically, expand **Samsung monitor not listed?** and enter its private IPv4 address. Models without a verified source layout use a guided source check. The app requires confirmation of the exact highlighted input before it saves a route.
 
 The current installer is not Authenticode-signed, so Windows may show an unknown-publisher warning. Verify that the installer came from this repository before running it.
@@ -34,6 +36,8 @@ The current installer is not Authenticode-signed, so Windows may show an unknown
 ## Use
 
 Select HDMI or DisplayPort from the main window. The two global shortcuts are shown under the source buttons and can be changed from the keyboard button.
+
+The window remembers its position, size, and maximized state when closed. It restores them on the next launch and keeps the window visible if the monitor layout or DPI has changed. Opening the app brings its existing window to the foreground and restores it if minimized.
 
 Open the options menu to create an HDMI or DisplayPort desktop shortcut for the configured monitor. The shortcut includes a monitor identity check, so it will not silently control a different monitor after setup changes.
 
@@ -74,6 +78,14 @@ Samsung can hide an HDMI or DisplayPort tile when the connected device is asleep
 
 Open DisplaySourcePilot and confirm the input currently visible on the monitor. No source command is sent during confirmation.
 
+**A Samsung connection fails after a restart or update**
+
+The app searches the local network for the same monitor if its saved address stops responding, then saves the new address. It matches the monitor's hardware identity and preserves the source routes, shortcuts, and secure connection settings. Keep the monitor on and connected to the same network as the PC.
+
+Pairing tokens persist in Windows Credential Manager for the same Windows user and PC across logoffs and restarts. The app has no token expiry or scheduled refresh. Shutdown, updates, address changes, connection errors, and failed re-pairing attempts do not delete a saved token. A replacement is saved only after a successful approval. A new approval is requested when no token is saved or the monitor explicitly rejects it; the app cannot prevent Samsung from revoking authorization.
+
+Reusable tokens require Samsung token authentication on secure port `8002`. Older monitors that only support port `8001` may require approval again; the app never sends a saved pairing token over that unencrypted connection.
+
 **A Samsung input is not shown in the source menu**
 
 Wake the device connected to that input and confirm it is sending a signal. In the source check, choose **Target input is not listed**, then restart the check after the input returns. The app cannot safely select an input that Samsung has removed from its menu.
@@ -82,11 +94,13 @@ Wake the device connected to that input and confirm it is sending a signal. In t
 
 Choose another shortcut. Windows rejects a global shortcut when another application has already registered it.
 
-Application logs are stored at `%LOCALAPPDATA%\DisplaySourcePilot\app.log`. Pairing tokens and other secrets are not written to the log.
+Application logs are stored at `%LOCALAPPDATA%\DisplaySourcePilot\app.log`. Token fields, network addresses, device UUIDs, usernames, and file paths are redacted. Existing logs are redacted when the updated app starts.
 
 ## Privacy
 
 DisplaySourcePilot has no telemetry and does not use a cloud service. DDC/CI commands remain on the PC. Samsung discovery and control stay on the local private network. Pairing tokens and trusted monitor certificate fingerprints are stored in Windows Credential Manager.
+
+Local-device requests bypass system proxies and do not follow redirects. Pairing tokens are sent only through the pinned TLS connection to the monitor. Release builds omit debug symbols and local build paths, and the release script checks the published files for personal settings and locally stored pairing tokens before creating an installer.
 
 ## Build
 
